@@ -67,7 +67,7 @@ def run(multiagent=DEFAULT_MA, output_folder=DEFAULT_OUTPUT_FOLDER, gui=DEFAULT_
         # make_vec_env 创建向量化环境以提高训练效率
         train_env = make_vec_env(HoverAviary,
                                  env_kwargs=dict(obs=DEFAULT_OBS, act=DEFAULT_ACT),
-                                 n_envs=1,  # 并行环境数量，可调整为 2, 4, 8
+                                 n_envs=8,  # 并行环境数量，可调整为 2, 4, 8
                                  seed=0
                                  )
         # 创建评估环境（非向量化）
@@ -76,7 +76,7 @@ def run(multiagent=DEFAULT_MA, output_folder=DEFAULT_OUTPUT_FOLDER, gui=DEFAULT_
         # 多智能体环境：使用 MultiHoverAviary
         train_env = make_vec_env(MultiHoverAviary,
                                  env_kwargs=dict(num_drones=DEFAULT_AGENTS, obs=DEFAULT_OBS, act=DEFAULT_ACT),
-                                 n_envs=1,
+                                 n_envs=8,
                                  seed=0
                                  )
         eval_env = MultiHoverAviary(num_drones=DEFAULT_AGENTS, obs=DEFAULT_OBS, act=DEFAULT_ACT)
@@ -197,11 +197,74 @@ def run(multiagent=DEFAULT_MA, output_folder=DEFAULT_OUTPUT_FOLDER, gui=DEFAULT_
         # 如果是运动学观测，记录到日志中
         if DEFAULT_OBS == ObservationType.KIN:
             if not multiagent:
-                # 单智能体日志记录 - 需要具体实现
-                pass
+                # 单智能体日志记录
+                logger.log(drone=0,
+                           timestamp=i/test_env.CTRL_FREQ,
+                           state=np.hstack([obs2[0:3], np.zeros(7), obs2[3:10], act2, np.zeros(6)]),
+                           control=np.zeros(12))
             else:
-                # 多智能体日志记录 - 需要具体实现
-                pass
+                # 打印观测和动作的形状，帮助调试
+                print(f"多智能体模式 - obs形状: {obs.shape}, act形状: {action.shape}")
+                
+                # 多智能体日志记录 - 改进版本
+                for j in range(DEFAULT_AGENTS):
+                    # 获取每个无人机的状态 - 注意检查实际形状
+                    if len(obs.shape) > 1 and obs.shape[0] == DEFAULT_AGENTS:
+                        # 如果obs是按无人机分组的(每个无人机一行)
+                        drone_obs = obs[j]
+                        drone_act = action[j] if len(action.shape) > 1 else action[j*4:(j+1)*4]
+                        
+                        # 提取位置、速度、姿态等
+                        drone_pos = drone_obs[0:3]
+                        drone_vel = drone_obs[3:6] if len(drone_obs) > 5 else np.zeros(3)
+                        drone_rpy = drone_obs[6:9] if len(drone_obs) > 8 else np.zeros(3)
+                        drone_ang_vel = drone_obs[9:12] if len(drone_obs) > 11 else np.zeros(3)
+                    else:
+                        # 如果obs是扁平的向量，需要手动分割
+                        obs_per_drone = len(obs) // DEFAULT_AGENTS
+                        start_idx = j * obs_per_drone
+                        
+                        drone_obs = obs[start_idx:start_idx+obs_per_drone]
+                        drone_act = action[j*4:(j+1)*4] if len(action.shape) == 1 else action[j]
+                        
+                        # 假设前12个是位置、速度、姿态、角速度(每个3个)
+                        if obs_per_drone >= 12:
+                            drone_pos = drone_obs[0:3]
+                            drone_vel = drone_obs[3:6]
+                            drone_rpy = drone_obs[6:9]
+                            drone_ang_vel = drone_obs[9:12]
+                        else:
+                            # 如果观测空间较小，填充一些零
+                            drone_pos = drone_obs[0:min(3, len(drone_obs))]
+                            if len(drone_pos) < 3:
+                                drone_pos = np.pad(drone_pos, (0, 3-len(drone_pos)))
+                            
+                            drone_vel = np.zeros(3)
+                            drone_rpy = np.zeros(3)
+                            drone_ang_vel = np.zeros(3)
+                    
+                    # 打印每个无人机的数据，帮助调试
+                    print(f"Drone {j} - pos: {drone_pos}, vel: {drone_vel}, act: {drone_act}")
+                    
+                    # 确保动作数组形状正确
+                    if not isinstance(drone_act, np.ndarray):
+                        drone_act = np.array([drone_act])
+                    if len(drone_act.shape) == 0:  # 如果是标量
+                        drone_act = np.array([drone_act])
+                    
+                    # 构建完整的20维状态向量(logger.log期望的格式)
+                    drone_state = np.zeros(20)
+                    drone_state[0:3] = drone_pos            # 位置 x,y,z
+                    drone_state[10:13] = drone_vel          # 速度 vx,vy,vz
+                    drone_state[7:10] = drone_rpy           # 姿态 roll,pitch,yaw
+                    drone_state[13:17] = drone_act if len(drone_act) <= 4 else drone_act[:4]  # 动作
+                    drone_state[17:20] = drone_ang_vel      # 角速度
+                    
+                    # 记录到日志
+                    logger.log(drone=j,
+                              timestamp=i/test_env.CTRL_FREQ,
+                              state=drone_state,
+                              control=np.zeros(12))
         
         test_env.render()  # 渲染环境（如果启用了GUI）
         print(terminated)
@@ -223,12 +286,45 @@ def run(multiagent=DEFAULT_MA, output_folder=DEFAULT_OUTPUT_FOLDER, gui=DEFAULT_
 # =================== 脚本入口点 ===================
 if __name__ == '__main__':
     # 定义并解析命令行参数
+    # 创建命令行参数解析器，描述脚本用途
     parser = argparse.ArgumentParser(description='Single agent reinforcement learning example script')
-    parser.add_argument('--multiagent',         default=DEFAULT_MA,            type=str2bool,      help='Whether to use example LeaderFollower instead of Hover (default: False)', metavar='')
-    parser.add_argument('--gui',                default=DEFAULT_GUI,           type=str2bool,      help='Whether to use PyBullet GUI (default: True)', metavar='')
-    parser.add_argument('--record_video',       default=DEFAULT_RECORD_VIDEO,  type=str2bool,      help='Whether to record a video (default: False)', metavar='')
-    parser.add_argument('--output_folder',      default=DEFAULT_OUTPUT_FOLDER, type=str,           help='Folder where to save logs (default: "results")', metavar='')
-    parser.add_argument('--colab',              default=DEFAULT_COLAB,         type=bool,          help='Whether example is being run by a notebook (default: "False")', metavar='')
+    
+    # 添加 multiagent 参数：是否使用多智能体环境（LeaderFollower），默认为 False
+    parser.add_argument('--multiagent',         
+                        default=DEFAULT_MA,            
+                        type=str2bool,      
+                        help='Whether to use example LeaderFollower instead of Hover (default: False)', 
+                        metavar='')
+    
+    # 添加 gui 参数：是否显示 PyBullet GUI，默认为 True
+    parser.add_argument('--gui',                
+                        default=DEFAULT_GUI,           
+                        type=str2bool,      
+                        help='Whether to use PyBullet GUI (default: True)', 
+                        metavar='')
+    
+    # 添加 record_video 参数：是否录制视频，默认为 False
+    parser.add_argument('--record_video',       
+                        default=DEFAULT_RECORD_VIDEO,  
+                        type=str2bool,      
+                        help='Whether to record a video (default: False)', 
+                        metavar='')
+    
+    # 添加 output_folder 参数：日志和模型保存的文件夹，默认为 "results"
+    parser.add_argument('--output_folder',      
+                        default=DEFAULT_OUTPUT_FOLDER, 
+                        type=str,           
+                        help='Folder where to save logs (default: "results")', 
+                        metavar='')
+    
+    # 添加 colab 参数：是否在 Colab （指谷歌的云计算环境）环境运行，默认为 False
+    parser.add_argument('--colab',              
+                        default=DEFAULT_COLAB,         
+                        type=bool,          
+                        help='Whether example is being run by a notebook (default: "False")', 
+                        metavar='')
+    
+    # 解析命令行参数，返回 Namespace 对象
     ARGS = parser.parse_args()
 
     # 启动训练和测试流程

@@ -76,10 +76,32 @@ def play(model_path=DEFAULT_MODEL_PATH, multiagent=DEFAULT_MA, gui=DEFAULT_GUI):
     logger.plot()
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Run a trained PPO policy in PyBullet drones environment.")
-    parser.add_argument('--model_path', type=str, default=DEFAULT_MODEL_PATH, help='Path to saved policy zip file')
-    parser.add_argument('--multiagent', type=bool, default=DEFAULT_MA, help='Whether to use MultiHoverAviary')
-    parser.add_argument('--gui', type=bool, default=DEFAULT_GUI, help='Enable GUI rendering')
+    # 创建命令行参数解析器，并添加相关参数
+    parser = argparse.ArgumentParser(description="在PyBullet无人机环境中运行训练好的PPO策略。")
+    parser.add_argument('--model_path',
+                        type=str,
+                        default=DEFAULT_MODEL_PATH,
+                        help='保存的策略zip文件路径 (默认: results/best_model.zip)',
+                        metavar='')  
+    parser.add_argument('--multiagent',
+                        type=bool,
+                        default=DEFAULT_MA,
+                        help='是否使用MultiHoverAviary环境 (默认: False)',
+                        metavar='')  
+    parser.add_argument('--gui',
+                        type=bool,
+                        default=DEFAULT_GUI,
+                        help='是否启用GUI渲染 (默认: True)',
+                        metavar='')  
+    # 
+    # parser.add_argument('--num_drones',
+    #                     type=int,
+    #                     default=2,
+    #                     help='MultiHoverAviary环境中的无人机数量 (默认: 2)',
+    #                     metavar='')  # 保持参数格式一致
+
+    # 解析命令行参数
     args = parser.parse_args()
 
+    # 调用play函数并传入解析后的参数
     play(**vars(args))
