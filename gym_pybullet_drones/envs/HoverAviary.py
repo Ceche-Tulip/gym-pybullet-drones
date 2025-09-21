@@ -121,7 +121,7 @@ class HoverAviary(BaseRLAviary):
              or abs(state[7]) > .4 or abs(state[8]) > .4  # 当无人机倾斜角度太大时截断
         ):
             return True
-        if self.step_counter/self.PYB_FREQ > self.EPISODE_LEN_SEC:  # 如果超过最大回合时间
+        if self.step_counter/self.PYB_FREQ > self.EPISODE_LEN_SEC:  # 仿真步数除以每秒步数，得到经过的仿真秒数，超过最大时长则截断
             return True
         else:
             return False
