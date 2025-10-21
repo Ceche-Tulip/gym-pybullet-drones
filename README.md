@@ -6,11 +6,6 @@ This is a minimalist refactoring of the original `gym-pybullet-drones` repositor
 
 <img src="gym_pybullet_drones/assets/helix.gif" alt="formation flight" width="325"> <img src="gym_pybullet_drones/assets/helix.png" alt="control info" width="425">
 
-> [!TIP]
-> If you are looking for **symbolic dynamics**, check out [`safe-control-gym`](https://github.com/utiasDSL/safe-control-gym) instead
->
-> If you are looking for **PX4/ArduPilot** support, check out [`aerial-autonomy-stack`](https://github.com/JacopoPan/aerial-autonomy-stack) instead
-
 ## Installation
 
 Tested on Intel x64/Ubuntu 22.04 and Apple Silicon/macOS 14.1.
@@ -50,7 +45,6 @@ python3 downwash.py
 cd gym_pybullet_drones/examples/
 python learn.py # task: single drone hover at z == 1.0
 python learn.py --multiagent true # task: 2-drone hover at z == 1.2 and 0.7
-LATEST_MODEL=$(ls -t results | head -n 1) && python play.py --model_path "results/${LATEST_MODEL}/best_model.zip" # play and visualize the most recent learned policy after training
 ```
 
 <img src="gym_pybullet_drones/assets/rl.gif" alt="rl example" width="375"> <img src="gym_pybullet_drones/assets/marl.gif" alt="marl example" width="375">
@@ -113,6 +107,20 @@ If you wish, please cite our [IROS 2021 paper](https://arxiv.org/abs/2103.02142)
 - C. Karen Liu and Dan Negrut (2020) [*The Role of Physics-Based Simulators in Robotics*](https://www.annualreviews.org/doi/pdf/10.1146/annurev-control-072220-093055)
 - Yunlong Song, Selim Naji, Elia Kaufmann, Antonio Loquercio, and Davide Scaramuzza (2020) [*Flightmare: A Flexible Quadrotor Simulator*](https://arxiv.org/pdf/2009.00563.pdf)
 
+## Core Team WIP
+
+- [ ] Multi-drone `crazyflie-firmware` SITL support (@spencerteetaert, @JacopoPan)
+- [ ] Use SITL services with steppable simulation (@JacopoPan)
+
+## Desired Contributions/PRs
+
+- [ ] Add motor delay, advanced ESC modeling by implementing a buffer in `BaseAviary._dynamics()`
+- [ ] Replace `rpy` with quaternions (and `ang_vel` with body rates) by editing `BaseAviary._updateAndStoreKinematicInformation()`, `BaseAviary._getDroneStateVector()`, and the `.computeObs()` methods of relevant subclasses
+
+## Troubleshooting
+
+- On Ubuntu, with an NVIDIA card, if you receive a "Failed to create and OpenGL context" message, launch `nvidia-settings` and under "PRIME Profiles" select "NVIDIA (Performance Mode)", reboot and try again.
+
 Run all tests from the top folder with
 
 ```sh
@@ -122,15 +130,63 @@ pytest tests/
 -----
 > University of Toronto's [Dynamic Systems Lab](https://github.com/utiasDSL) / [Vector Institute](https://github.com/VectorInstitute) / University of Cambridge's [Prorok Lab](https://github.com/proroklab)
 
-<!--
-## WIP/Desired Contributions/PRs
+# 连续导航系统
+## **🔄 完整的工作流程**
 
-- [ ] Multi-drone `crazyflie-firmware` SITL support
-- [ ] Use SITL services with steppable simulation
-- [ ] Add motor delay, advanced ESC modeling by implementing a buffer in `BaseAviary._dynamics()`
-- [ ] Replace `rpy` with quaternions (and `ang_vel` with body rates) by editing `BaseAviary._updateAndStoreKinematicInformation()`, `BaseAviary._getDroneStateVector()`, and the `.computeObs()` methods of relevant subclasses
+### 1. 训练阶段
 
-## Troubleshooting
+```bash
+# 使用单目标训练
+python -m gym_pybullet_drones.custom.single_learn
+```
 
-- On Ubuntu, with an NVIDIA card, if you receive a "Failed to create and OpenGL context" message, launch `nvidia-settings` and under "PRIME Profiles" select "NVIDIA (Performance Mode)", reboot and try again.
--->
+### 2. 基础测试阶段
+
+说明：
+- 不带 `--model` 参数默认使用最新custom/results文件夹下最新的模型
+- 基础rollout是多无人机，单无人机无法使用，这里暂时不管
+
+
+```bash
+# 基础rollout测试
+python -m gym_pybullet_drones.custom.rollout --model results/save-09.25.2025_17.44.46/best_model.zip
+
+# 兼容性测试
+python -m gym_pybullet_drones.custom.rolloutCP
+```
+
+### 3. 连续导航阶段 ⭐ 
+
+```bash
+# 主终端：启动连续导航系统
+conda activate drones
+python -m gym_pybullet_drones.custom.rollout_continuous --model results/save-09.25.2025_17.44.46/best_model.zip
+
+# 辅助终端：启动远程控制器
+python -m gym_pybullet_drones.custom.remote_controller
+```
+
+## **📁 核心文件说明**
+
+### 🎯 连续导航核心文件
+
+- **rollout_continuous.py**: 主入口，处理参数解析和系统启动
+- **continuous_navigator.py**: 核心导航逻辑，目标队列管理，网络命令处理
+- **config_continuous.py**: 统一配置管理（目标点、空间范围、容差等）
+- **space_expander.py**: 扩展环境类，延长episode时间，放宽空间限制
+- **`remote_controller.py`**: 独立终端控制器，避免输出刷屏问题
+
+### 🎯 系统特性
+
+- ✅ **连续导航**: 支持 a->b->c 序列导航
+- ✅ **目标队列**: 实时添加目标，自动排队执行
+- ✅ **悬停等待**: 到达目标后悬停等待新指令，不截断
+- ✅ **远程控制**: 双终端操作，主系统+独立控制器
+- ✅ **边界验证**: 智能边界检查，防止无效目标
+- ✅ **网络命令**: Socket通信，支持 target x y z、`pause`、`resume` 等命令
+
+### 🎯 推荐的使用流程
+
+1. **训练**: `single_learn.py` → 生成模型
+2. **基础测试**: `rollout.py` → 验证模型性能
+3. **连续导航**: `rollout_continuous.py` + `remote_controller.py` → 测试连续导航系统。

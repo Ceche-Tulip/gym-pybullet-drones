@@ -94,7 +94,9 @@ class BaseRLAviary(BaseAviary):
         if act == ActionType.VEL:
             self.SPEED_LIMIT = 0.03 * self.MAX_SPEED_KMH * (1000/3600)
 
-    ################################################################################
+        # custom ---v
+        self.TARGET_POS = np.array([0.3,0.3,0.3])
+        # custom ---^
 
     def _addObstacles(self):
         """Add obstacles to the environment.
@@ -274,6 +276,12 @@ class BaseRLAviary(BaseAviary):
                 elif self.ACT_TYPE in [ActionType.ONE_D_RPM, ActionType.ONE_D_PID]:
                     obs_lower_bound = np.hstack([obs_lower_bound, np.array([[act_lo] for i in range(self.NUM_DRONES)])])
                     obs_upper_bound = np.hstack([obs_upper_bound, np.array([[act_hi] for i in range(self.NUM_DRONES)])])
+
+            # custom ---v
+            obs_lower_bound = np.hstack([obs_lower_bound, np.array([[lo,lo,lo] for i in range(self.NUM_DRONES)])])
+            obs_upper_bound = np.hstack([obs_upper_bound, np.array([[hi,hi,hi] for i in range(self.NUM_DRONES)])])
+            # custom ---^
+
             return spaces.Box(low=obs_lower_bound, high=obs_upper_bound, dtype=np.float32)
             ############################################################
         else:
@@ -307,16 +315,42 @@ class BaseRLAviary(BaseAviary):
         elif self.OBS_TYPE == ObservationType.KIN:
             ############################################################
             #### OBS SPACE OF SIZE 12
+            # obs_12 = np.zeros((self.NUM_DRONES,12))
+            # for i in range(self.NUM_DRONES):
+            #     #obs = self._clipAndNormalizeState(self._getDroneStateVector(i))
+            #     obs = self._getDroneStateVector(i)
+            #     obs_12[i, :] = np.hstack([obs[0:3], obs[7:10], obs[10:13], obs[13:16]]).reshape(12,)
+            # ret = np.array([obs_12[i, :] for i in range(self.NUM_DRONES)]).astype('float32')
+            # #### Add action buffer to observation #######################
+            # for i in range(self.ACTION_BUFFER_SIZE):
+            #     ret = np.hstack([ret, np.array([self.action_buffer[i][j, :] for j in range(self.NUM_DRONES)])])
+            # return ret
+            ############################################################
+
+            # custom ---v
+            ############################################################
+            #### OBS SPACE OF SIZE 12
+            ret_list = []
             obs_12 = np.zeros((self.NUM_DRONES,12))
             for i in range(self.NUM_DRONES):
+
                 #obs = self._clipAndNormalizeState(self._getDroneStateVector(i))
                 obs = self._getDroneStateVector(i)
                 obs_12[i, :] = np.hstack([obs[0:3], obs[7:10], obs[10:13], obs[13:16]]).reshape(12,)
-            ret = np.array([obs_12[i, :] for i in range(self.NUM_DRONES)]).astype('float32')
-            #### Add action buffer to observation #######################
-            for i in range(self.ACTION_BUFFER_SIZE):
-                ret = np.hstack([ret, np.array([self.action_buffer[i][j, :] for j in range(self.NUM_DRONES)])])
-            return ret
+                ret = np.array([obs_12[i, :]]).astype('float32')
+                #### Add action buffer to observation #######################
+                for j in range(self.ACTION_BUFFER_SIZE):
+                    # print("TEST [self.action_buffer[j][i, :]]", np.array([self.action_buffer]).shape)
+                    ret = np.hstack([ret, np.array([self.action_buffer[j][i, :]])])
+                ret = np.hstack([ret, np.array([self.TARGET_POS-obs[0:3]])])
+                # print("TEST:OK")
+                ret_list.append(ret)
+
+            ret_list = np.array(ret_list)
+            return ret_list
             ############################################################
+            
+            # custom ---^
+
         else:
             print("[ERROR] in BaseRLAviary._computeObs()")

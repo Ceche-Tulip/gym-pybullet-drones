@@ -1,6 +1,6 @@
 import numpy as np
 
-from gym_pybullet_drones.envs.BaseRLAviary import BaseRLAviary
+from gym_pybullet_drones.envs.obsin_BaseRLAviary import BaseRLAviary
 from gym_pybullet_drones.utils.enums import DroneModel, Physics, ActionType, ObservationType
 
 class HoverAviary(BaseRLAviary):
@@ -48,7 +48,6 @@ class HoverAviary(BaseRLAviary):
             The type of action space (1 or 3D; RPMS, thurst and torques, or waypoint with PID control)
 
         """
-        self.TARGET_POS = np.array([0,0,1])
         self.EPISODE_LEN_SEC = 8
         super().__init__(drone_model=drone_model,
                          num_drones=1,
@@ -75,7 +74,7 @@ class HoverAviary(BaseRLAviary):
 
         """
         state = self._getDroneStateVector(0)
-        ret = max(0, 2 - np.linalg.norm(self.TARGET_POS-state[0:3])**4)
+        ret = max(0, 2 - np.linalg.norm(self.TARGET_POS-state[0:3])**1.5)
         return ret
 
     ################################################################################
@@ -129,4 +128,16 @@ class HoverAviary(BaseRLAviary):
             Dummy value.
 
         """
-        return {"answer": 42} #### Calculated by the Deep Thought supercomputer in 7.5M years
+        # return {"answer": 42} #### Calculated by the Deep Thought supercomputer in 7.5M years
+
+        state = self._getDroneStateVector(0)
+        dist = np.linalg.norm(self.TARGET_POS-state[0:3])
+
+        th = 0.05
+        
+        if dist < th:
+            success = True
+        else:
+            success = False
+
+        return {"is_success": success}

@@ -4,9 +4,10 @@ import pybullet as p
 from gymnasium import spaces
 from collections import deque
 
-from gym_pybullet_drones.envs.BaseAviary import BaseAviary
+from gym_pybullet_drones.envs.circleTask_BaseAviary import BaseAviary
 from gym_pybullet_drones.utils.enums import DroneModel, Physics, ActionType, ObservationType, ImageType
 from gym_pybullet_drones.control.DSLPIDControl import DSLPIDControl
+from gym_pybullet_drones.custom.ask_road import ask_road
 
 class BaseRLAviary(BaseAviary):
     """Base single and multi-agent environment class for reinforcement learning."""
@@ -93,6 +94,24 @@ class BaseRLAviary(BaseAviary):
         #### Set a limit on the maximum target speed ###############
         if act == ActionType.VEL:
             self.SPEED_LIMIT = 0.03 * self.MAX_SPEED_KMH * (1000/3600)
+
+    # # custom ---v
+    # self.target_in = True
+        # self.TARGET_POS = np.array([0.3,0.3,0.3])
+        self.ctrl_freq = ctrl_freq
+
+        H = .1
+        H_STEP = .05
+        R = .3
+        PERIOD = 10
+        self.NUM_WP = self.ctrl_freq*PERIOD
+        self.TARGET_POS_CIRCLE = np.zeros((self.NUM_WP,3))
+        for i in range(self.NUM_WP):
+            self.TARGET_POS_CIRCLE[i, :] = R*np.cos((i/self.NUM_WP)*(2*np.pi)+np.pi/2)+self.INIT_XYZS[0, 0], R*np.sin((i/self.NUM_WP)*(2*np.pi)+np.pi/2)-R+self.INIT_XYZS[0, 1], 0
+        self.wp_counters = np.array([int((i*self.NUM_WP/6)%self.NUM_WP) for i in range(self.NUM_DRONES)])
+
+        self.drone_counter[self.NUM_DRONES] = 0
+        # custom ---^
 
     ################################################################################
 
@@ -274,6 +293,12 @@ class BaseRLAviary(BaseAviary):
                 elif self.ACT_TYPE in [ActionType.ONE_D_RPM, ActionType.ONE_D_PID]:
                     obs_lower_bound = np.hstack([obs_lower_bound, np.array([[act_lo] for i in range(self.NUM_DRONES)])])
                     obs_upper_bound = np.hstack([obs_upper_bound, np.array([[act_hi] for i in range(self.NUM_DRONES)])])
+
+            # custom ---v
+            obs_lower_bound = np.hstack([obs_lower_bound, np.array([[lo,lo,lo] for i in range(self.NUM_DRONES)])])
+            obs_upper_bound = np.hstack([obs_upper_bound, np.array([[hi,hi,hi] for i in range(self.NUM_DRONES)])])
+            # custom ---^
+
             return spaces.Box(low=obs_lower_bound, high=obs_upper_bound, dtype=np.float32)
             ############################################################
         else:
@@ -305,18 +330,48 @@ class BaseRLAviary(BaseAviary):
                                           )
             return np.array([self.rgb[i] for i in range(self.NUM_DRONES)]).astype('float32')
         elif self.OBS_TYPE == ObservationType.KIN:
+            # custom ---v
             ############################################################
             #### OBS SPACE OF SIZE 12
+            ret_list = []
             obs_12 = np.zeros((self.NUM_DRONES,12))
+            p_counter = 0
             for i in range(self.NUM_DRONES):
+
                 #obs = self._clipAndNormalizeState(self._getDroneStateVector(i))
                 obs = self._getDroneStateVector(i)
                 obs_12[i, :] = np.hstack([obs[0:3], obs[7:10], obs[10:13], obs[13:16]]).reshape(12,)
-            ret = np.array([obs_12[i, :] for i in range(self.NUM_DRONES)]).astype('float32')
-            #### Add action buffer to observation #######################
-            for i in range(self.ACTION_BUFFER_SIZE):
-                ret = np.hstack([ret, np.array([self.action_buffer[i][j, :] for j in range(self.NUM_DRONES)])])
-            return ret
-            ############################################################
+                ret = np.array([obs_12[i, :]]).astype('float32')
+                #### Add action buffer to observation #######################
+                for j in range(self.ACTION_BUFFER_SIZE):
+                    # print("TEST [self.action_buffer[j][i, :]]", np.array([self.action_buffer]).shape)
+                    ret = np.hstack([ret, np.array([self.action_buffer[j][i, :]])])
+
+
+                #### Compute control for the current way point #############
+                current_pos=np.hstack([self.TARGET_POS_CIRCLE[self.wp_counters[i], 0:2], self.INIT_XYZS[i, 2]])
+                print("TEST:current_pos:", current_pos)
+
+                #### Go to the next way point and loop #####################
+                self.wp_counters[i] = self.wp_counters[i] + 1 if self.wp_counters[i] < (self.NUM_WP-1) else 0                            
+                
+
+                #### Get right roads from asking the LLM
+                response = ask_road(self.INIT_XYZS)
+
+                self.drone_counter += 1
+                if self.drone_counter >= self.NUM_DRONES:
+                    self.drone_counter = 0
+                
+                print("what responsed:", response), exit(0)
+                ret = np.hstack([ret, np.array([response[drone_counter]-obs[0:3]])])
+                # print("TEST:OK")
+                ret_list.append(ret)
+
+            ret_list = np.array(ret_list)
+            return ret_list
+        ############################################################
+            
+            # custom ---^
         else:
             print("[ERROR] in BaseRLAviary._computeObs()")

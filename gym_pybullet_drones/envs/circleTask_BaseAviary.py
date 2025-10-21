@@ -192,9 +192,17 @@ class BaseAviary(gym.Env):
                                                             )
         #### Set initial poses #####################################
         if initial_xyzs is None:
-            self.INIT_XYZS = np.vstack([np.array([x*4*self.L for x in range(self.NUM_DRONES)]), \
-                                        np.array([y*4*self.L for y in range(self.NUM_DRONES)]), \
-                                        np.ones(self.NUM_DRONES) * (self.COLLISION_H/2-self.COLLISION_Z_OFFSET+.1)]).transpose().reshape(self.NUM_DRONES, 3)
+            # self.INIT_XYZS = np.vstack([np.array([x*4*self.L for x in range(self.NUM_DRONES)]), \
+            #                             np.array([y*4*self.L for y in range(self.NUM_DRONES)]), \
+            #                             np.ones(self.NUM_DRONES) * (self.COLLISION_H/2-self.COLLISION_Z_OFFSET+.1)]).transpose().reshape(self.NUM_DRONES, 3)
+            
+            # custom ---v
+            H = .1
+            H_STEP = .05
+            R = .3
+            self.INIT_XYZS = np.array([[R*np.cos((i/6)*2*np.pi+np.pi/2), R*np.sin((i/6)*2*np.pi+np.pi/2)-R, H+i*H_STEP] for i in range(num_drones)])
+            # custom ---^
+
         elif np.array(initial_xyzs).shape == (self.NUM_DRONES,3):
             self.INIT_XYZS = initial_xyzs
         else:

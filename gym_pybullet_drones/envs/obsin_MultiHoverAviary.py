@@ -1,15 +1,17 @@
 import numpy as np
 
-from gym_pybullet_drones.envs.BaseRLAviary import BaseRLAviary
+from gym_pybullet_drones.envs.circleTask_BaseRLAviary import BaseRLAviary
 from gym_pybullet_drones.utils.enums import DroneModel, Physics, ActionType, ObservationType
 
-class HoverAviary(BaseRLAviary):
-    """Single agent RL problem: hover at position."""
+class MultiHoverAviary(BaseRLAviary):
+    """Multi-agent RL problem: leader-follower."""
 
     ################################################################################
-    
+
     def __init__(self,
                  drone_model: DroneModel=DroneModel.CF2X,
+                 num_drones: int=2,
+                 neighbourhood_radius: float=np.inf,
                  initial_xyzs=None,
                  initial_rpys=None,
                  physics: Physics=Physics.PYB,
@@ -20,14 +22,18 @@ class HoverAviary(BaseRLAviary):
                  obs: ObservationType=ObservationType.KIN,
                  act: ActionType=ActionType.RPM
                  ):
-        """Initialization of a single agent RL environment.
+        """Initialization of a multi-agent RL environment.
 
-        Using the generic single agent RL superclass.
+        Using the generic multi-agent RL superclass.
 
         Parameters
         ----------
         drone_model : DroneModel, optional
             The desired drone type (detailed in an .urdf file in folder `assets`).
+        num_drones : int, optional
+            The desired number of drones in the aviary.
+        neighbourhood_radius : float, optional
+            Radius used to compute the drones' adjacency matrix, in meters.
         initial_xyzs: ndarray | None, optional
             (NUM_DRONES, 3)-shaped array containing the initial XYZ position of the drones.
         initial_rpys: ndarray | None, optional
@@ -48,20 +54,21 @@ class HoverAviary(BaseRLAviary):
             The type of action space (1 or 3D; RPMS, thurst and torques, or waypoint with PID control)
 
         """
-        self.TARGET_POS = np.array([0,0,1])
         self.EPISODE_LEN_SEC = 8
         super().__init__(drone_model=drone_model,
-                         num_drones=1,
+                         num_drones=num_drones,
+                         neighbourhood_radius=neighbourhood_radius,
                          initial_xyzs=initial_xyzs,
                          initial_rpys=initial_rpys,
                          physics=physics,
                          pyb_freq=pyb_freq,
                          ctrl_freq=ctrl_freq,
                          gui=gui,
-                         record=record,
+                         record=record, 
                          obs=obs,
                          act=act
                          )
+        self.TARGET_POS = self.INIT_XYZS + np.array([[0,0,1/(i+1)] for i in range(num_drones)])
 
     ################################################################################
     
@@ -74,8 +81,10 @@ class HoverAviary(BaseRLAviary):
             The reward.
 
         """
-        state = self._getDroneStateVector(0)
-        ret = max(0, 2 - np.linalg.norm(self.TARGET_POS-state[0:3])**4)
+        states = np.array([self._getDroneStateVector(i) for i in range(self.NUM_DRONES)])
+        ret = 0
+        for i in range(self.NUM_DRONES):
+            ret += max(0, 2 - np.linalg.norm(self.TARGET_POS[i,:]-states[i][0:3])**4)
         return ret
 
     ################################################################################
@@ -89,12 +98,15 @@ class HoverAviary(BaseRLAviary):
             Whether the current episode is done.
 
         """
-        state = self._getDroneStateVector(0)
-        if np.linalg.norm(self.TARGET_POS-state[0:3]) < .0001:
+        states = np.array([self._getDroneStateVector(i) for i in range(self.NUM_DRONES)])
+        dist = 0
+        for i in range(self.NUM_DRONES):
+            dist += np.linalg.norm(self.TARGET_POS[i,:]-states[i][0:3])
+        if dist < .0001:
             return True
         else:
             return False
-        
+
     ################################################################################
     
     def _computeTruncated(self):
@@ -106,11 +118,12 @@ class HoverAviary(BaseRLAviary):
             Whether the current episode timed out.
 
         """
-        state = self._getDroneStateVector(0)
-        if (abs(state[0]) > 1.5 or abs(state[1]) > 1.5 or state[2] > 2.0 # Truncate when the drone is too far away
-             or abs(state[7]) > .4 or abs(state[8]) > .4 # Truncate when the drone is too tilted
-        ):
-            return True
+        states = np.array([self._getDroneStateVector(i) for i in range(self.NUM_DRONES)])
+        for i in range(self.NUM_DRONES):
+            if (abs(states[i][0]) > 2.0 or abs(states[i][1]) > 2.0 or states[i][2] > 2.0 # Truncate when a drones is too far away
+             or abs(states[i][7]) > .4 or abs(states[i][8]) > .4 # Truncate when a drone is too tilted
+            ):
+                return True
         if self.step_counter/self.PYB_FREQ > self.EPISODE_LEN_SEC:
             return True
         else:
@@ -129,4 +142,16 @@ class HoverAviary(BaseRLAviary):
             Dummy value.
 
         """
+
+        states = np.array([self._getDroneStateVector(i) for i in range(self.NUM_DRONES)])
+        dist = 0
+        for i in range(self.NUM_DRONES):
+            dist += np.linalg.norm(self.TARGET_POS[i,:]-states[i][0:3])
+
+        th = 0.05
+        
+        if dist < th:
+            success = True
+        else:
+            success = False
         return {"answer": 42} #### Calculated by the Deep Thought supercomputer in 7.5M years
