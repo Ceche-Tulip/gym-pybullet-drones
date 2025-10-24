@@ -114,6 +114,9 @@ def print_system_info(args, model_path: str):
 
 def main():
     """主函数"""
+    # 初始化 args 为 None，避免未绑定错误
+    args = None
+    
     try:
         # 解析命令行参数
         args = parse_arguments()
@@ -170,7 +173,8 @@ def main():
     except Exception as e:
         print(f"\n❌ 运行时错误: {e}")
         
-        if args.verbose:
+        # 检查 args 是否已定义且有 verbose 属性
+        if args is not None and hasattr(args, 'verbose') and args.verbose:
             print(f"\n🔍 详细错误信息:")
             traceback.print_exc()
         

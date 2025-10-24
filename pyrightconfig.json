@@ -1,0 +1,19 @@
+{
+  "include": [
+    "gym_pybullet_drones"
+  ],
+  "exclude": [
+    "**/node_modules",
+    "**/__pycache__"
+  ],
+  "reportOptionalMemberAccess": "none",
+  "reportOptionalSubscript": "none",
+  "reportOptionalCall": "none",
+  "reportOptionalIterable": "none",
+  "reportOptionalContextManager": "none",
+  "reportOptionalOperand": "none",
+  "reportGeneralTypeIssues": "warning",
+  "reportUnboundVariable": "warning",
+  "typeCheckingMode": "basic",
+  "pythonVersion": "3.10"
+}

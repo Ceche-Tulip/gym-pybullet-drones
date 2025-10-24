@@ -24,15 +24,33 @@ class ExtendedHoverAviary(HoverAviary):
                  record=False,
                  obs: ObservationType=ObservationType.KIN,
                  act: ActionType=ActionType.RPM,
-                 target_pos=None
+                 target_pos=None,
+                 obstacles=False
                  ):
         """
         初始化扩展空间的RL环境
         
         参数:
             target_pos: 目标位置 [x, y, z]，如果为None则使用默认值
+            obstacles: 是否添加障碍物（仅用于测试环境，默认False）
             其他参数与父类相同
         """
+        
+        # ⚠️ 重要：必须在父类初始化之前设置这些属性
+        # 因为父类的 __init__ 会调用 _housekeeping()，
+        # 而 _housekeeping() 会调用 _addObstacles()，
+        # _addObstacles() 需要访问 self.EXTENDED_SPACE
+        
+        # 扩展空间配置（在父类初始化前设置）
+        self.EXTENDED_SPACE = TESTING_SPACE
+        self.TARGET_TOLERANCE_CONFIG = TARGET_TOLERANCE
+        
+        # 设置目标位置 - 使用更小的测试目标
+        if target_pos is not None:
+            self.TARGET_POS = np.array(target_pos)
+        else:
+            # 使用更小、更容易到达的默认目标
+            self.TARGET_POS = np.array([0.8, 0.8, 1.2])  # 较小的测试目标
         
         # 调用父类初始化
         super().__init__(
@@ -48,16 +66,8 @@ class ExtendedHoverAviary(HoverAviary):
             act=act
         )
         
-        # 设置目标位置 - 使用更小的测试目标
-        if target_pos is not None:
-            self.TARGET_POS = np.array(target_pos)
-        else:
-            # 使用更小、更容易到达的默认目标
-            self.TARGET_POS = np.array([0.8, 0.8, 1.2])  # 较小的测试目标
-        
-        # 扩展空间配置
-        self.EXTENDED_SPACE = TESTING_SPACE
-        self.TARGET_TOLERANCE_CONFIG = TARGET_TOLERANCE
+        # 保存障碍物标志（在父类初始化后设置）
+        self.OBSTACLES = obstacles
         
         # 扩展episode长度以支持连续导航
         self.EPISODE_LEN_SEC = 300  # 5分钟，足够完成多个目标的连续导航
@@ -203,3 +213,85 @@ class ExtendedHoverAviary(HoverAviary):
         warning_message = "; ".join(warnings) if warnings else "飞行状态正常"
         
         return is_safe, warning_message
+    
+    def _addObstacles(self):
+        """
+        在连续导航测试环境中添加静态障碍物
+        
+        根据TESTING_SPACE的尺寸合理布置障碍物，避免遮挡起点和常用路径。
+        当前环境大小: X[-1.5, 1.5], Y[-1.5, 1.5], Z[0.05, 2.5]
+        
+        障碍物布置策略：
+        - 两个对称的圆柱体，位于x=0轴线上
+        - Y轴位置互为相反数，形成对称布局
+        - 高度相同，测试无人机穿越能力
+        """
+        import pybullet as p
+        
+        # 确保有容器存储障碍物ID
+        self.OBSTACLE_IDS = []
+        
+        # 获取空间范围
+        x_min, x_max = self.EXTENDED_SPACE['x_range']
+        y_min, y_max = self.EXTENDED_SPACE['y_range']
+        z_min, z_max = self.EXTENDED_SPACE['z_range']
+        
+        print(f"[障碍物] 正在创建障碍物...")
+        print(f"[障碍物] 环境范围: X[{x_min}, {x_max}], Y[{y_min}, {y_max}], Z[{z_min}, {z_max}]")
+        
+        # 圆柱体参数配置
+        cyl_radius = 0.10        # 圆柱半径 10cm
+        cyl_height = 1.0         # 圆柱高度 1.0m
+        y_distance = 0.4         # Y轴距离中心的距离（两柱间距为1.2m）
+        
+        # ==================== 障碍物 1: 蓝色圆柱体 (左侧) ====================
+        col_cyl1 = p.createCollisionShape(
+            p.GEOM_CYLINDER,
+            radius=cyl_radius,
+            height=cyl_height,
+            physicsClientId=self.CLIENT
+        )
+        vis_cyl1 = p.createVisualShape(
+            p.GEOM_CYLINDER,
+            radius=cyl_radius,
+            length=cyl_height,
+            rgbaColor=[0, 0.5, 1, 0.8],  # 蓝色，稍透明
+            physicsClientId=self.CLIENT
+        )
+        cyl1_id = p.createMultiBody(
+            baseMass=0,  # 静态物体
+            baseCollisionShapeIndex=col_cyl1,
+            baseVisualShapeIndex=vis_cyl1,
+            basePosition=[0.0, -y_distance, cyl_height/2],  # x=0, y=-0.6, z=0.5
+            physicsClientId=self.CLIENT
+        )
+        self.OBSTACLE_IDS.append(cyl1_id)
+        print(f"[障碍物] ✅ 创建蓝色圆柱 (左侧) @ (0.0, {-y_distance:.1f}, {cyl_height/2:.2f})")
+        
+        # ==================== 障碍物 2: 红色圆柱体 (右侧) ====================
+        col_cyl2 = p.createCollisionShape(
+            p.GEOM_CYLINDER,
+            radius=cyl_radius,
+            height=cyl_height,
+            physicsClientId=self.CLIENT
+        )
+        vis_cyl2 = p.createVisualShape(
+            p.GEOM_CYLINDER,
+            radius=cyl_radius,
+            length=cyl_height,
+            rgbaColor=[1, 0.2, 0.2, 0.8],  # 红色
+            physicsClientId=self.CLIENT
+        )
+        cyl2_id = p.createMultiBody(
+            baseMass=0,
+            baseCollisionShapeIndex=col_cyl2,
+            baseVisualShapeIndex=vis_cyl2,
+            basePosition=[0.0, y_distance, cyl_height/2],  # x=0, y=+0.6, z=0.5
+            physicsClientId=self.CLIENT
+        )
+        self.OBSTACLE_IDS.append(cyl2_id)
+        print(f"[障碍物] ✅ 创建红色圆柱 (右侧) @ (0.0, {y_distance:.1f}, {cyl_height/2:.2f})")
+        
+        print(f"[障碍物] 🎯 共创建 {len(self.OBSTACLE_IDS)} 个对称障碍物")
+        print(f"[障碍物] 两柱间距: {y_distance * 2:.1f}m (可供无人机穿越)")
+        print(f"[障碍物] 障碍物高度: {cyl_height:.1f}m, 中心高度: {cyl_height/2:.1f}m")
