@@ -242,9 +242,10 @@ class ExtendedHoverAviary(HoverAviary):
         # 圆柱体参数配置
         cyl_radius = 0.10        # 圆柱半径 10cm
         cyl_height = 1.0         # 圆柱高度 1.0m
-        y_distance = 0.4         # Y轴距离中心的距离（两柱间距为1.2m）
+        x_offset = 0.6           # X轴偏移（将障碍物放在路径侧面）
+        y_distance = 0.5         # Y轴距离中心的距离（两柱间距为1.0m通道）
         
-        # ==================== 障碍物 1: 蓝色圆柱体 (左侧) ====================
+        # ==================== 障碍物 1: 蓝色圆柱体 (左下) ====================
         col_cyl1 = p.createCollisionShape(
             p.GEOM_CYLINDER,
             radius=cyl_radius,
@@ -262,13 +263,13 @@ class ExtendedHoverAviary(HoverAviary):
             baseMass=0,  # 静态物体
             baseCollisionShapeIndex=col_cyl1,
             baseVisualShapeIndex=vis_cyl1,
-            basePosition=[0.0, -y_distance, cyl_height/2],  # x=0, y=-0.6, z=0.5
+            basePosition=[x_offset, -y_distance, cyl_height/2],  # 移到(0.6, -0.5, 0.5)
             physicsClientId=self.CLIENT
         )
         self.OBSTACLE_IDS.append(cyl1_id)
-        print(f"[障碍物] ✅ 创建蓝色圆柱 (左侧) @ (0.0, {-y_distance:.1f}, {cyl_height/2:.2f})")
+        print(f"[障碍物] ✅ 创建蓝色圆柱 (左下) @ ({x_offset:.1f}, {-y_distance:.1f}, {cyl_height/2:.2f})")
         
-        # ==================== 障碍物 2: 红色圆柱体 (右侧) ====================
+        # ==================== 障碍物 2: 红色圆柱体 (右上) ====================
         col_cyl2 = p.createCollisionShape(
             p.GEOM_CYLINDER,
             radius=cyl_radius,
@@ -286,11 +287,11 @@ class ExtendedHoverAviary(HoverAviary):
             baseMass=0,
             baseCollisionShapeIndex=col_cyl2,
             baseVisualShapeIndex=vis_cyl2,
-            basePosition=[0.0, y_distance, cyl_height/2],  # x=0, y=+0.6, z=0.5
+            basePosition=[-x_offset, y_distance, cyl_height/2],  # 移到(0.6, +0.5, 0.5)
             physicsClientId=self.CLIENT
         )
         self.OBSTACLE_IDS.append(cyl2_id)
-        print(f"[障碍物] ✅ 创建红色圆柱 (右侧) @ (0.0, {y_distance:.1f}, {cyl_height/2:.2f})")
+        print(f"[障碍物] ✅ 创建红色圆柱 (右上) @ ({x_offset:.1f}, {y_distance:.1f}, {cyl_height/2:.2f})")
         
         print(f"[障碍物] 🎯 共创建 {len(self.OBSTACLE_IDS)} 个对称障碍物")
         print(f"[障碍物] 两柱间距: {y_distance * 2:.1f}m (可供无人机穿越)")

@@ -72,8 +72,8 @@ TARGET_TOLERANCE = {
 
 # 飞行安全配置  
 SAFETY_LIMITS = {
-    'max_velocity': 3.0,        # 最大飞行速度（米/秒）
-    'max_acceleration': 5.0,    # 最大加速度（米/秒²）
+    'max_velocity': 1.0,        # 最大飞行速度（米/秒）
+    'max_acceleration': 3.0,    # 最大加速度（米/秒²）
     'emergency_stop_distance': 0.1,  # 紧急停止距离（米）
 }
 
